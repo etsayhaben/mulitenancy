@@ -1,32 +1,37 @@
-# master_db/models.py
-
-from django.db import models
+from django.db import models, connections
 from django_tenants.models import TenantMixin, DomainMixin
-from core.roles import RoleChoices, ROLE_TO_GROUP
-import uuid
-from django_tenants.models import TenantMixin, DomainMixin
+from django_tenants.migration_executors import get_executor
 from django.contrib.auth.models import AbstractUser, BaseUserManager
-# master_db/models.py
-
-from django_tenants.models import TenantMixin, DomainMixin
+from core.roles import RoleChoices, ROLE_TO_GROUP
 
 class Client(TenantMixin):
     name = models.CharField(max_length=100, unique=True)
     created_on = models.DateField(auto_now_add=True)
-    # Optional fields for your business logic
     plan = models.CharField(max_length=20, default='free')  # e.g., 'free', 'pro', 'enterprise'
     contact_email = models.EmailField(blank=True, null=True)
     is_active = models.BooleanField(default=True)
 
-    # django-tenants will auto-create schema in TENANT_DATABASE_ALIAS
     auto_create_schema = True
     auto_drop_schema = False  # Never auto-drop in prod!
+
+    def create_schema(self, check_if_exists=False, verbosity=1):
+        """Override to create schema in tenant_db instead of default."""
+        connection = connections['tenant_db']
+        executor = get_executor()(connection, self)
+        executor.create_schema(check_if_exists, verbosity)
+
+    def delete_schema(self, check_if_exists=False, verbosity=1):
+        """Override to delete schema from tenant_db."""
+        connection = connections['tenant_db']
+        executor = get_executor()(connection, self)
+        executor.delete_schema(check_if_exists, verbosity)
 
     def __str__(self):
         return self.name
 
 class Domain(DomainMixin):
     pass
+
 class UserManager(BaseUserManager):
     def create_user(self, username, email=None, password=None, **extra_fields):
         extra_fields.setdefault("role", RoleChoices.CLERK.value)
